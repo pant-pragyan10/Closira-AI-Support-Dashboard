@@ -1,0 +1,22 @@
+{
+  "title": "Customer Support — Standard Operating Procedure",
+  "version": "1.0",
+  "sections": [
+    {
+      "id": "greeting",
+      "title": "Greeting",
+      "content": "Greet the customer, ask how you can help, and gather context."
+    },
+    {
+      "id": "escalation",
+      "title": "Escalation Criteria",
+      "content": "If the issue is account access, billing disputes, or security-related, escalate to Tier 2."
+    }
+    ,
+    {
+      "id": "services",
+      "title": "Services and Pricing",
+      "content": "Botox: from £200; Dermal Fillers: from £250; Consultation: free. Prices may vary by clinic and are subject to change."
+    }
+  ]
+}

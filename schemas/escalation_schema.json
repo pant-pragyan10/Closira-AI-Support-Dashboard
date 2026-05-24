@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Escalation Response",
+  "type": "object",
+  "required": ["needs_escalation", "escalation_score", "recommended_action"],
+  "properties": {
+    "needs_escalation": {"type": "boolean"},
+    "escalation_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "reason": {"type": "array", "items": {"type": "string"}},
+    "recommended_action": {"type": "string"},
+    "priority": {"type": "string"}
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Qualification Response",
+  "type": "object",
+  "required": ["next_question", "collected_data", "qualification_complete"],
+  "properties": {
+    "next_question": {"type": ["string", "null"]},
+    "collected_data": {"type": "object"},
+    "missing_fields": {"type": "array", "items": {"type": "string"}},
+    "qualification_complete": {"type": "boolean"},
+    "lead_quality": {"type": "string"}
+  },
+  "additionalProperties": false
+}
