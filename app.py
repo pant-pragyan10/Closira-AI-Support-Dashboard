@@ -1,27 +1,14 @@
 import os
 from dotenv import load_dotenv
 import streamlit as st
-
-from utils.groq_client import GroqClient
-from utils.memory import SessionMemory
-from utils.parser import load_sop
-from utils.logger import ConversationLogger
-from agents.router import route_message
-from agents.router_agent import RouterAgent
-from agents.escalation_agent import EscalationAgent
-from utils.escalation_logger import EscalationLogger
-from agents.summary_agent import SummaryAgent
-import os
 import json
 import time
 from datetime import datetime
-from dotenv import load_dotenv
-import streamlit as st
 
 from utils.groq_client import GroqClient
 from utils.parser import load_sop
 from utils.logger import ConversationLogger
-from agents.router import route_message
+from agents.router_agent import RouterAgent
 from agents.escalation_agent import EscalationAgent
 from utils.escalation_logger import EscalationLogger
 from agents.summary_agent import SummaryAgent
@@ -220,7 +207,7 @@ def post_user_message(text: str, agent_choice: str, session_store: SessionStore)
 
     # Normalize response and append (avoid empty bubbles)
     norm = normalize_response(response) if response is not None else normalize_response(None)
-    assistant_text = norm.get("assistant_text") or "[No assistant response — check logs]"
+    assistant_text = norm.get("assistant_text") or "I'm sorry, I don't have an answer right now. I've flagged this for follow-up."
     meta = {"confidence": norm.get("confidence"), "needs_escalation": norm.get("needs_escalation")}
     # preserve any extra metadata
     if norm.get("metadata"):
@@ -241,8 +228,16 @@ def post_user_message(text: str, agent_choice: str, session_store: SessionStore)
         if esc_report.get("needs_escalation") and (
             norm.get("needs_escalation") or esc_report.get("escalation_score", 0) >= 0.95
         ):
-            session_store.append_message("assistant", f"[Escalation recommended: {', '.join(esc_report.get('reason', []))}]")
-            session_store._data.setdefault("history", [])[-1]["meta"] = {"escalation": True, "priority": esc_report.get("priority")}
+            # Annotate the last assistant message with escalation metadata instead of appending a duplicate overlay.
+            try:
+                last = session_store._data.setdefault("history", [])[-1]
+                last_meta = last.get("meta", {}) or {}
+                last_meta.update({"escalation": True, "priority": esc_report.get("priority"), "escalation_reasons": esc_report.get("reason")})
+                last["meta"] = last_meta
+            except Exception:
+                # Fallback to appending a short escalation note if annotation fails
+                session_store.append_message("assistant", f"Escalation recommended: {', '.join(esc_report.get('reason', []))}")
+                session_store._data.setdefault("history", [])[-1]["meta"] = {"escalation": True, "priority": esc_report.get("priority")}
     except Exception:
         pass
 

@@ -40,7 +40,21 @@ def normalize_response(response: Any) -> Dict[str, Any]:
             except Exception:
                 assistant_text = str(assistant_text)
 
-        out["assistant_text"] = assistant_text or "[No assistant response — check logs]"
+        # Friendly UX: avoid internal/debug text. If agent returned no answer but requested escalation,
+        # surface a professional escalation message. Otherwise provide a polite fallback.
+        if assistant_text:
+            out["assistant_text"] = assistant_text
+        else:
+            if response.get("needs_escalation"):
+                out["assistant_text"] = (
+                    "I couldn't find information about that request in our clinic documentation, "
+                    "so I've flagged this for human follow-up. We'll get back to you shortly."
+                )
+            else:
+                out["assistant_text"] = (
+                    "I'm sorry, I don't have an answer for that right now. "
+                    "I've noted this for follow-up."
+                )
 
         try:
             out["confidence"] = float(response.get("confidence", response.get("score", 0.0) or 0.0))
