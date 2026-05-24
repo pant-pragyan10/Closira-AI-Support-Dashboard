@@ -11,9 +11,19 @@ def build_prompt(user_message: str, sop: dict = None) -> str:
     - Use professional SMB customer support tone.
     """
 
-    sop_text = "\n".join([
-        f"- {s.get('title','')}: {s.get('content','') }" for s in (sop or {}).get("sections", [])
-    ])
+    # Render SOP into a more semantic, human-friendly context block to aid grounding.
+    parts = []
+    for s in (sop or {}).get("sections", []):
+        title = s.get("title", "").strip()
+        content = s.get("content", "").strip()
+        # If content uses semicolons to separate items, expand into bullets for clarity.
+        if ";" in content:
+            items = [it.strip() for it in content.split(";") if it.strip()]
+            bullet_list = "\n".join([f"  - {it}" for it in items])
+            parts.append(f"{title}:\n{bullet_list}")
+        else:
+            parts.append(f"{title}: {content}")
+    sop_text = "\n\n".join(parts)
 
     system = (
         "You are a strict FAQ assistant for Closira. You must only use the SOP context provided. "
@@ -29,7 +39,7 @@ def build_prompt(user_message: str, sop: dict = None) -> str:
 
     escalation_triggers = (
         "Escalate (set `needs_escalation` true) when: the SOP lacks the information, the user requests medical/legal advice, "
-        "the user shows angry or abusive tone, the user complains about billing or asks pricing negotiation, or the model's confidence is low."
+        "the user shows angry or abusive tone, or the user asks for pricing negotiation beyond listed prices. Do NOT escalate if the SOP contains explicit pricing; instead answer directly using that pricing information."
     )
 
     scoring_rules = (

@@ -18,5 +18,21 @@
       "title": "Services and Pricing",
       "content": "Botox: from £200; Dermal Fillers: from £250; Consultation: free. Prices may vary by clinic and are subject to change."
     }
+    ,
+    {
+      "id": "booking",
+      "title": "Booking",
+      "content": "Bookings via WhatsApp (+44 7700 900000) or through our website booking form. For urgent appointments call reception."
+    },
+    {
+      "id": "hours",
+      "title": "Clinic Hours",
+      "content": "Monday–Saturday: 09:00–19:00; Sunday: Closed"
+    },
+    {
+      "id": "medical",
+      "title": "Medical Guidance",
+      "content": "For medical questions, pre-procedure medications, contraindications, and medical advice, escalate to a licensed clinician. Do not provide medical advice in chat."
+    }
   ]
 }

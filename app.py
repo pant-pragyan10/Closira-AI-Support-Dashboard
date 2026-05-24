@@ -7,6 +7,7 @@ from utils.memory import SessionMemory
 from utils.parser import load_sop
 from utils.logger import ConversationLogger
 from agents.router import route_message
+from agents.router_agent import RouterAgent
 from agents.escalation_agent import EscalationAgent
 from utils.escalation_logger import EscalationLogger
 from agents.summary_agent import SummaryAgent
@@ -209,10 +210,9 @@ def post_user_message(text: str, agent_choice: str, session_store: SessionStore)
 
     # Route to agent
     try:
-        if agent_choice == "qualification":
-            response = route_message(agent_choice, text, client=client, sop=load_sop("data/sop.json"), memory=session_store)
-        else:
-            response = route_message(agent_choice, text, client=client, sop=load_sop("data/sop.json"), memory=None)
+        # Automatic routing via RouterAgent (default). The agent dropdown remains for debug only.
+        router = RouterAgent(client=client, sop=load_sop("data/sop.json"), memory=session_store)
+        response = router.handle(text, session_store=session_store)
     except Exception as e:
         session_store.append_message("assistant", "Service error: unable to contact model.",)
         logger.log({"error": str(e)})
