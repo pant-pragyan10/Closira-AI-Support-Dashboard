@@ -67,9 +67,9 @@ def render_sidebar(sop, session_store: SessionStore):
     st.sidebar.write(sop.get("title", "(no SOP)"))
 
     st.sidebar.header("Qualification Progress")
-    lead = session_store.get_lead()
-    miss = missing_fields(lead)
-    completed = max(0, len(LEAD_FIELDS) - len(miss))
+    lead = session_store.get_lead() or {}
+    # Count only truly populated lead fields (non-empty, non-null)
+    completed = sum(1 for f in LEAD_FIELDS if lead.get(f))
     st.sidebar.progress(completed / len(LEAD_FIELDS))
     st.sidebar.markdown(f"**Collected:** {completed}/{len(LEAD_FIELDS)}")
 
@@ -87,8 +87,9 @@ def render_sidebar(sop, session_store: SessionStore):
         st.sidebar.markdown("No escalation log found.")
 
     st.sidebar.header("Session Analytics")
-    st.sidebar.markdown(f"- Conversation length: {len(st.session_state.history)} messages")
-    avg_conf = compute_avg_confidence(st.session_state.history)
+    hist = session_store.get_history() or []
+    st.sidebar.markdown(f"- Conversation length: {len(hist)} messages")
+    avg_conf = compute_avg_confidence(hist)
     st.sidebar.markdown(f"- Avg confidence: {avg_conf:.2f}")
 
     if st.sidebar.button("Generate Session Summary"):
@@ -99,8 +100,18 @@ def render_sidebar(sop, session_store: SessionStore):
 
     if st.sidebar.button("Reset Session"):
         session_store.clear()
-        st.session_state.history = []
+        # clear UI session keys to avoid stale metrics
+        for k in ["history", "last_summary", "input_box", "debug_mode", "agent"]:
+            if k in st.session_state:
+                try:
+                    del st.session_state[k]
+                except Exception:
+                    st.session_state[k] = None
         st.experimental_rerun()
+
+    # Debug Mode toggle - when enabled, reveal developer controls
+    debug = st.sidebar.checkbox("Debug Mode", value=False, help="Enable manual agent selection and raw metadata for debugging")
+    st.session_state["debug_mode"] = bool(debug)
 
 
 def compute_avg_confidence(history):
@@ -112,12 +123,19 @@ def compute_avg_confidence(history):
                 vals.append(float(c))
             except Exception:
                 pass
-    return sum(vals) / len(vals) if vals else 1.0
+    # Return 0.0 when no confidences present to avoid hardcoded perfect score
+    return (sum(vals) / len(vals)) if vals else 0.0
 
 
 def export_conversation():
     try:
-        data = st.session_state.history
+        # Export the authoritative session store history when available
+        data = []
+        try:
+            ss = SessionStore(session_id=st.session_state.session_id)
+            data = ss.get_history()
+        except Exception:
+            data = st.session_state.get("history", [])
         st.sidebar.download_button("Download conversation", json.dumps(data, indent=2), file_name=f"conversation_{st.session_state.session_id}.json", mime="application/json")
     except Exception:
         st.sidebar.error("Unable to export conversation.")
@@ -184,6 +202,12 @@ def render_message(msg: dict):
         content = text if isinstance(text, str) else json.dumps(text)
         st.markdown(f"<div class='chat-row assistant'><div class='chat-bubble'>{badge_html}{content}</div></div>", unsafe_allow_html=True)
         st.markdown(f"<div class='meta'>{ts}</div>", unsafe_allow_html=True)
+        # If debug mode enabled, show raw metadata below the message for developer inspection
+        try:
+            if st.session_state.get("debug_mode") and isinstance(meta, dict):
+                st.markdown(f"<div class='meta'><pre>{json.dumps(meta, indent=2)}</pre></div>", unsafe_allow_html=True)
+        except Exception:
+            pass
 
 
 def post_user_message(text: str, agent_choice: str, session_store: SessionStore):
@@ -201,8 +225,10 @@ def post_user_message(text: str, agent_choice: str, session_store: SessionStore)
         router = RouterAgent(client=client, sop=load_sop("data/sop.json"), memory=session_store)
         response = router.handle(text, session_store=session_store)
     except Exception as e:
-        session_store.append_message("assistant", "Service error: unable to contact model.",)
-        logger.log({"error": str(e)})
+        # Surface a concise error to the UI and log full details for debugging
+        err_msg = str(e) or "unknown error"
+        session_store.append_message("assistant", f"Service error: unable to contact model ({err_msg})")
+        logger.log({"event": "router_handle_error", "error": err_msg})
         return
 
     # Normalize response and append (avoid empty bubbles)
@@ -215,6 +241,18 @@ def post_user_message(text: str, agent_choice: str, session_store: SessionStore)
     session_store.append_message("assistant", assistant_text)
     # attach meta to last message
     session_store._data.setdefault("history", [])[-1]["meta"] = meta
+    # persist metadata so a Streamlit rerun sees the updated confidence
+    try:
+        session_store.save()
+    except Exception:
+        pass
+    # If agent returned a structured summary in metadata, expose it in UI summary panel
+    try:
+        summary = norm.get("metadata", {}).get("summary")
+        if summary:
+            st.session_state["last_summary"] = summary
+    except Exception:
+        pass
     logger.log({"agent": agent_choice, "user": text, "assistant": response, "normalized": norm})
 
     # After every assistant response, run escalation check
@@ -234,6 +272,10 @@ def post_user_message(text: str, agent_choice: str, session_store: SessionStore)
                 last_meta = last.get("meta", {}) or {}
                 last_meta.update({"escalation": True, "priority": esc_report.get("priority"), "escalation_reasons": esc_report.get("reason")})
                 last["meta"] = last_meta
+                try:
+                    session_store.save()
+                except Exception:
+                    pass
             except Exception:
                 # Fallback to appending a short escalation note if annotation fails
                 session_store.append_message("assistant", f"Escalation recommended: {', '.join(esc_report.get('reason', []))}")
@@ -247,6 +289,11 @@ def main():
 
     sop = load_sop("data/sop.json")
     session_store = SessionStore(session_id=st.session_state.session_id)
+    # Keep a lightweight UI cache in session_state in sync with authoritative store
+    try:
+        st.session_state.history = session_store.get_history()
+    except Exception:
+        st.session_state.history = []
 
     # Validate model / API at startup and switch to demo mode on failures
     try:
@@ -270,8 +317,12 @@ def main():
 
         # Input area
         st.markdown("---")
-        agent_choice = st.selectbox("Agent", ["faq", "qualification", "escalation", "summary"], index=["faq","qualification","escalation","summary"].index(st.session_state.get("agent","faq")))
-        st.session_state["agent"] = agent_choice
+        # Manual agent selector hidden by default; shown only in Debug Mode
+        if st.session_state.get("debug_mode"):
+            agent_choice = st.selectbox("Agent (debug only)", ["auto", "faq", "qualification", "escalation", "summary"], index=["auto","faq","qualification","escalation","summary"].index(st.session_state.get("agent","auto")))
+            st.session_state["agent"] = agent_choice
+        else:
+            st.session_state["agent"] = "auto"
 
         # Use session_state-backed text input and a button callback to clear safely.
         user_text = st.text_input("Message", key="input_box")
@@ -279,7 +330,7 @@ def main():
         def _send_from_state():
             # Read values from session state, call handler, then clear the input.
             txt = st.session_state.get("input_box", "").strip()
-            agent = st.session_state.get("agent", "faq")
+            agent = st.session_state.get("agent", "auto")
             if txt:
                 post_user_message(txt, agent, session_store)
             # clearing is safe inside a callback
@@ -290,7 +341,10 @@ def main():
     with cols[1]:
         st.header("Analytics")
         st.metric("Messages", len(session_store.get_history()))
-        st.metric("Lead Progress", f"{len([f for f in session_store.get_lead().keys()])}/{len(LEAD_FIELDS)}")
+        # Count only truly populated lead fields
+        lead = session_store.get_lead() or {}
+        collected = sum(1 for f in LEAD_FIELDS if lead.get(f))
+        st.metric("Lead Progress", f"{collected}/{len(LEAD_FIELDS)}")
         st.metric("Avg Confidence", f"{compute_avg_confidence(session_store.get_history()):.2f}")
 
 

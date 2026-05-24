@@ -1,3 +1,59 @@
+# Closira AI — Support Dashboard
+
+Overview
+--
+Closira AI is a grounded, SOP-driven support assistant demonstrating routing, qualification, escalation, and summary workflows backed by an LLM (Groq). The system emphasizes safety-first JSON outputs, deterministic SOP fallbacks, and production-like UX in a Streamlit dashboard.
+
+Structure
+--
+- `agents/` — modular agents (FAQ, Qualification, Escalation, Summary, Router)
+- `prompts/` — prompt builders for each agent
+- `utils/` — clients, normalization, session store, parsers, and helpers
+- `tests/` — unit tests for core behaviors
+- `app.py` — Streamlit UI entrypoint
+
+Design Notes
+--
+- SOP Grounding: `data/sop.json` is the single source-of-truth. Agents prefer SOP-cited answers and use deterministic extraction when model output is missing or unparsable.
+- Routing: `agents/router_agent.py` automatically chooses between qualification, FAQ, summary, and escalation flows.
+- Safety: Agents return strict JSON; `utils/json_utils.py` performs robust parsing and fallbacks.
+- UI: `app.py` normalizes agent outputs and stores authoritative conversation state in `logs/session_*.json` via `SessionStore`.
+
+Quick Start
+--
+1. Copy `.env.example` to `.env` and set your Groq API key:
+
+```bash
+cp .env.example .env
+# edit .env and add your key
+```
+
+2. Install dependencies (recommended in a virtualenv):
+
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+3. Run the Streamlit app:
+
+```bash
+streamlit run app.py
+```
+
+Deployment
+--
+- The app is a single-process Streamlit dashboard. For production, deploy via a container or a PaaS and wire environment variables securely (do not commit `.env`).
+
+Repository hygiene
+--
+- Secrets must never be committed. Use `.env.example` as a template.
+- Logs and session files are ignored by `.gitignore`.
+
+Final notes
+--
+This repo is prepared for portfolio presentation: concise README, cleaned logs, and a minimal dependency list. Add screenshots to `assets/` and update the README gallery section before publishing.
 # Closira — SOP-Grounded AI Support Agent
 
 Short, professional README tailored for recruiter reviewers and demo viewers.

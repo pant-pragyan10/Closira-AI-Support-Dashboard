@@ -49,10 +49,22 @@ class RouterAgent:
 
     def _looks_like_qualification(self, text: str, lead: Dict) -> bool:
         t = (text or "").lower()
+        # If session lead has missing fields, prefer qualification when business signals present
         if lead and missing_fields(lead):
-            # If user mentions business/team keywords, prefer qualification
-            if any(k in t for k in ("business", "clinic", "team", "staff", "employees", "we are")):
+            keywords = ("business", "clinic", "team", "staff", "employees", "we are", "we're", "we run", "our clinic", "my clinic", "we have")
+            if any(k in t for k in keywords):
                 return True
+            # numeric staff mentions
+            import re
+
+            if re.search(r"\b\d{1,3}\s*(staff|employees|people)\b", t):
+                return True
+
+        # If no lead yet but message seems like business onboarding, route to qualification
+        onboarding_signals = ("we run", "we're a", "we are a", "my clinic", "i run", "i manage", "we have a team", "our clinic")
+        if any(k in t for k in onboarding_signals):
+            return True
+
         return False
 
     def _is_summary_request(self, text: str) -> bool:
@@ -67,6 +79,17 @@ class RouterAgent:
             lead = session_store.get_lead() or {}
             last_asked, _ = session_store.get_last_asked()
 
+        # Early gibberish/clarification detection
+        try:
+            from utils.text_utils import is_gibberish, is_clarification_needed
+
+            if is_gibberish(message):
+                return {"assistant_text": "I’m not sure I understood that. Could you rephrase your question?", "agent_used": "router", "confidence": 0.2, "needs_escalation": False, "metadata": {"reason": "gibberish_detected"}}
+            if is_clarification_needed(message):
+                return {"assistant_text": "Could you provide a bit more detail so I can help?", "agent_used": "router", "confidence": 0.35, "needs_escalation": False, "metadata": {"reason": "clarification_requested"}}
+        except Exception:
+            pass
+
         # 1) Continue active qualification if present
         if last_asked:
             out = self._qual_agent().handle(message)
@@ -77,7 +100,18 @@ class RouterAgent:
             # Build summary using full conversation
             history = session_store.get_history() if session_store else []
             out = self._summ_agent().handle(history, qualification=lead or {}, escalations=[], session_id=(session_store.session_id if session_store else "default"))
-            return {"assistant_text": out.get("recommended_next_action") or "Summary generated.", "agent_used": "summary", "confidence": 1.0, "needs_escalation": False, "metadata": {"summary": out}}
+            # Build a concise human-friendly summary paragraph from structured summary
+            summary_lines = []
+            if out.get("customer_intent"):
+                summary_lines.append(f"Customer intent: {out.get('customer_intent')}")
+            if out.get("qualification_data"):
+                qd = out.get("qualification_data")
+                if isinstance(qd, dict) and qd:
+                    summary_lines.append("Qualification: " + ", ".join([f"{k}: {v}" for k, v in qd.items()]))
+            if out.get("recommended_next_action"):
+                summary_lines.append("Recommended: " + out.get("recommended_next_action"))
+            assistant_text = " \n".join(summary_lines) or "Summary generated."
+            return {"assistant_text": assistant_text, "agent_used": "summary", "confidence": 0.8, "needs_escalation": False, "metadata": {"summary": out}}
 
         # 3) Qualification intent detection
         if self._looks_like_qualification(message, lead):
@@ -85,7 +119,13 @@ class RouterAgent:
             # qualification agent returns structured dict (next_question etc.)
             # map to assistant-visible text
             assistant_text = out.get("next_question") or out.get("answer") or ""
-            return {"assistant_text": assistant_text, "agent_used": "qualification", "confidence": out.get("lead_quality") or 0.0, "needs_escalation": out.get("needs_escalation", False), "metadata": out}
+            # preserve numeric confidence if agent provided one; otherwise pick a conservative default
+            raw_conf = out.get("confidence", None)
+            try:
+                conf = float(raw_conf) if raw_conf is not None else 0.6
+            except Exception:
+                conf = 0.0
+            return {"assistant_text": assistant_text, "agent_used": "qualification", "confidence": conf, "needs_escalation": out.get("needs_escalation", False), "metadata": out}
 
         # 4) Default FAQ
         faq_out = self._faq_agent().handle(message)

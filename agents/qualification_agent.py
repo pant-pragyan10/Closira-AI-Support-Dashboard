@@ -155,6 +155,9 @@ class QualificationAgent:
                 "missing_fields": [],
                 "qualification_complete": True,
                 "lead_quality": summary.get("lead_quality"),
+                "confidence": 0.75,
+                "source_used": True,
+                "needs_escalation": False,
                 "lead_summary": summary,
             }
 

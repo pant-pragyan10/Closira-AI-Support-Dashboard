@@ -79,6 +79,21 @@ def normalize_response(response: Any) -> Dict[str, Any]:
         except Exception:
             out["confidence"] = 0.0
 
+        # Provide slight variation for unsupported messages stored in metadata
+        try:
+            if response.get("needs_escalation") and not response.get("source_used") and not out["assistant_text"]:
+                # variations
+                variations = [
+                    "I couldn't find that service in our clinic documentation, so I've flagged this for human follow-up.",
+                    "That service isn't currently covered in our support information; I've noted it for follow-up.",
+                    "I don’t have verified information on that procedure; I've flagged this for human review.",
+                ]
+                # pick based on a lightweight hash to avoid randomness in tests
+                idx = sum(ord(c) for c in (response.get('escalation_reason') or '')) % len(variations)
+                out["assistant_text"] = variations[idx]
+        except Exception:
+            pass
+
         return out
 
     # Other types: stringify

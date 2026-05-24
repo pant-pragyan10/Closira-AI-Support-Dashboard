@@ -133,8 +133,18 @@ class FaqAgent:
                 needs_escalation = False
                 escalation_reason = None
 
-        # Ensure confidence in [0.0,1.0]
-        confidence = max(0.0, min(1.0, confidence))
+        # Calibrate confidence into realistic ranges
+        try:
+            from utils.confidence import calibrate_confidence
+
+            category = "faq"
+            deterministic = False
+            if source_used and confidence >= 0.9:
+                deterministic = True
+            calibrated = calibrate_confidence(confidence, category=category, source_used=source_used, deterministic=deterministic)
+            confidence = calibrated
+        except Exception:
+            confidence = max(0.0, min(1.0, confidence))
 
         return {
             "answer": answer,
