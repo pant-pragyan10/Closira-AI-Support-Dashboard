@@ -1,4 +1,8 @@
 # Closira AI — Support Dashboard
+<img width="644" height="721" alt="image" src="https://github.com/user-attachments/assets/a72118a1-0499-4df3-8ed1-b88ad75f8796" />
+<img width="796" height="650" alt="image" src="https://github.com/user-attachments/assets/399e3e7b-c810-49d6-b445-ba9474d6639e" />
+
+
 
 Overview
 --
